@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios"; // Import Axios for backend connection
 import "./MainPage.css";
 
 const MainPage = () => {
@@ -7,6 +8,12 @@ const MainPage = () => {
   const [fileName, setFileName] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState(""); // Error message for invalid file type
+  const [file, setFile] = useState(null); // State to hold the file
+  const [edaSummary, setEdaSummary] = useState(null); // Store EDA summary
+  const [descriptiveStats, setDescriptiveStats] = useState(null); // Store descriptive stats
+  const [numericalPlot, setNumericalPlot] = useState(""); // Store numerical distribution plot
+  const [categoricalPlots, setCategoricalPlots] = useState({}); // Store categorical plots
+  const [correlationPlot, setCorrelationPlot] = useState(""); // Store correlation heatmap
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -15,28 +22,56 @@ const MainPage = () => {
   }, []);
 
   const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      const fileType = file.name.split('.').pop().toLowerCase();
+    const uploadedFile = event.target.files[0];
+    if (uploadedFile) {
+      const fileType = uploadedFile.name.split('.').pop().toLowerCase();
       const allowedTypes = ['csv', 'json', 'xlsx'];
 
       if (allowedTypes.includes(fileType)) {
-        setFileName(file.name);
+        setFileName(uploadedFile.name);
+        setFile(uploadedFile); // Save the file to state
         setView("fileUploading");
 
-        const interval = setInterval(() => {
-          setUploadProgress((prev) => {
-            if (prev >= 100) {
-              clearInterval(interval);
-              setView("fileUploaded");
-              return 100;
-            }
-            return prev + 10;
-          });
-        }, 200);
+        uploadFileToBackend(uploadedFile); // Call function to upload the file to backend
       } else {
         setErrorMessage("Please upload a valid file type: .csv, .json, or .xlsx");
       }
+    }
+  };
+
+  // Function to upload file to backend
+  const uploadFileToBackend = async (uploadedFile) => {
+    const formData = new FormData();
+    formData.append("file", uploadedFile);
+
+    try {
+      // Backend API request
+      const response = await axios.post("http://localhost:5000/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        onUploadProgress: (progressEvent) => {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(progress); // Update upload progress
+        },
+      });
+
+      if (response.status === 200) {
+        // Set EDA data on success
+        const data = response.data;
+        setEdaSummary(data.summary);
+        setDescriptiveStats(data.descriptive_stats);
+        setNumericalPlot(data.numerical_distribution);
+        setCategoricalPlots(data.categorical_distributions);
+        setCorrelationPlot(data.correlation_plot);
+        setView("fileUploaded"); // File uploaded successfully
+      } else {
+        throw new Error("File upload failed");
+      }
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      setErrorMessage("Error uploading file. Please try again.");
+      setView("main");
     }
   };
 
@@ -105,17 +140,62 @@ const MainPage = () => {
               <h1>File Uploaded Successfully</h1>
               <p><strong>File Name:</strong> {fileName}</p>
               <p>Proceed with your analysis now.</p>
+
+              {/* EDA Summary */}
+              {edaSummary && (
+                <div className="eda-summary">
+                  <h2>EDA Summary</h2>
+                  <pre>{JSON.stringify(edaSummary, null, 2)}</pre>
+                </div>
+              )}
+
+              {/* Descriptive Statistics */}
+              {descriptiveStats && (
+                <div className="descriptive-stats">
+                  <h2>Descriptive Statistics</h2>
+                  <pre>{JSON.stringify(descriptiveStats, null, 2)}</pre>
+                </div>
+              )}
+
+              {/* Numerical Distribution Plot */}
+              {numericalPlot && (
+                <div className="plot-container">
+                  <h2>Numerical Distribution</h2>
+                  <img src={`data:image/png;base64,${numericalPlot}`} alt="Numerical Distribution" />
+                </div>
+              )}
+
+              {/* Categorical Distributions */}
+              {Object.keys(categoricalPlots).length > 0 && (
+                <div className="plot-container">
+                  <h2>Categorical Distributions</h2>
+                  {Object.keys(categoricalPlots).map((col, index) => (
+                    <div key={index}>
+                      <h3>{col}</h3>
+                      <img src={`data:image/png;base64,${categoricalPlots[col]}`} alt={col} />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Correlation Heatmap */}
+              {correlationPlot && (
+                <div className="plot-container">
+                  <h2>Correlation Heatmap</h2>
+                  <img src={`data:image/png;base64,${correlationPlot}`} alt="Correlation Heatmap" />
+                </div>
+              )}
             </div>
 
-      {/* Updated Swipe Button */}
-      <div className="swipe-button-container" onClick={handleNextClick}>
-        <button className="swipe-button">
-          <span>Swipe Next</span>
-          <div className="arrow-container">
-            <div className="arrow"></div>
-          </div>
-        </button>
-      </div>
+            {/* Swipe Button */}
+            <div className="swipe-button-container" onClick={handleNextClick}>
+              <button className="swipe-button">
+                <span>Swipe Next</span>
+                <div className="arrow-container">
+                  <div className="arrow"></div>
+                </div>
+              </button>
+            </div>
           </div>
         )}
 
@@ -129,8 +209,8 @@ const MainPage = () => {
         )}
       </main>
 
-            {/* Home Icon */}
-            <div className="home-icon" onClick={handleHomeClick}>
+      {/* Home Icon */}
+      <div className="home-icon" onClick={handleHomeClick}>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
